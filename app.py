@@ -1,11 +1,12 @@
 import os
-
 import pandas as pd
 import sqlite3
 import streamlit as st
 import io
+from openpyxl import load_workbook
+import zipfile
 
-# Crear una función para guardar las tablas en la base de datos
+# CREAR TABLAS CON LAS COLUMNAS SELECCIONADAS
 def guardar_tablas_en_bd(df1, df2, columnas_df1, columnas_df2):
     # Crear una conexión a la base de datos SQLite
     conn = sqlite3.connect('maestra.db')
@@ -43,6 +44,10 @@ def guardar_tablas_en_bd(df1, df2, columnas_df1, columnas_df2):
     # Cerrar la conexión a la base de datos
     conn.close()
 
+# FIN CREAR TABLAS
+
+
+# ELIMINAR TABLAS CON TODOS SUS DATOS
 def borrar_datos_bd():
     # Conectar a la base de datos
     conn = sqlite3.connect('maestra.db')
@@ -59,9 +64,10 @@ def borrar_datos_bd():
 
     # Cerrar la conexión a la base de datos
     conn.close()
+# FIN ELIMINAR TABLAS
 
 
-
+# CREA LA TABLA MAESTRA A TRAVES DE UNA CONSULTA
 def realizar_consulta():
     # Conectar a la base de datos SQLite
     conn = sqlite3.connect('maestra.db')
@@ -75,28 +81,22 @@ def realizar_consulta():
         CASE 
             WHEN julianday(kardex.fvlote) - julianday(movimientos.fsrgstro) < 366 THEN 'SI'
             ELSE 'NO'
-        END AS carta
+        END AS carta,
+        TRIM(
+          REPLACE(
+              movimientos.generico,
+              movimientos.comercial,
+              ''
+          )
+        ) AS presentacion
         FROM movimientos
         JOIN 
             kardex ON kardex.nmalmcn = movimientos.nmalmcn
             AND kardex.cartclo = movimientos.cartclo
             AND kardex.comprobante = movimientos.ndrcpcndo
+            AND kardex.unid_in = movimientos.cfmvmnto
         WHERE movimientos.ndrcpcndo IS NOT NULL AND kardex.comprobante IS NOT NULL
-        UNION
-        SELECT 'MAPFRE PERU' AS codigo, movimientos2.calmcn, movimientos2.cartclo, movimientos2.dartclo, strftime('%d/%m/%Y',movimientos2.fsrgstro), movimientos2.gmvmnto, 
-        movimientos2.ndrcpcndo, movimientos2.des_cli, movimientos2.cfmvmnto, movimientos2.emfrccn, movimientos2.tmalmcn, 
-        movimientos2.nmalmcn, movimientos2.generico, movimientos2.comercial, strftime('%d/%m/%Y',kardex.fvlote), kardex.lote, kardex.des_mov,'15-25° C' AS temperatura, julianday(kardex.fvlote) - julianday(movimientos2.fsrgstro) AS  carta_canje,
-        CASE 
-            WHEN julianday(kardex.fvlote) - julianday(movimientos2.fsrgstro) < 366 THEN 'SI'
-            ELSE 'NO'
-        END AS carta
-        FROM 
-            movimientos AS movimientos2
-        LEFT JOIN 
-            kardex ON kardex.nmalmcn = movimientos2.nmalmcn
-            AND kardex.cartclo = movimientos2.cartclo
-            AND kardex.tipo = movimientos2.tmalmcn
-        
+
     ''')
 
     # Obtener los resultados de la consulta
@@ -106,105 +106,213 @@ def realizar_consulta():
     conn.close()
 
     return resultados
+# FIN DE CREAR CONSULTA DE TABLA MAESTRA
 
+# LIMPIA LAS FILAS PARA SEGUIR AÑADIENDO FACTURAS
+def limpiar_hoja(hoja):
+    hoja['E9'] = ''
+    hoja['E10'] = ''
+    hoja['C8'] = ''
+    hoja['C6'] = ''
+    for fila in range(15, 40):
+        hoja[f'B{fila}'] = ''
+        hoja[f'C{fila}'] = ''
+        hoja[f'M{fila}'] = ''
+        hoja[f'N{fila}'] = ''
+        hoja[f'O{fila}'] = ''
+        hoja[f'P{fila}'] = ''
+# FIN DE FILAS HOJAS
 
+# CREAR LAS GUIAS CON LA INFORMACION DE LAS FACTURAS
+def search_invoices(master_file, nro_facturas_lista):
+    temp_dir = 'temp'
+    os.makedirs(temp_dir, exist_ok=True)
+    generated_files = []
 
+    for nro_factura in nro_facturas_lista:
+        df_master = pd.read_excel(master_file)
+        filas_factura_con_valor_comun = df_master[df_master['ndrcpcndo'] == nro_factura]
+        if filas_factura_con_valor_comun.empty:
+            st.write(f"No se encontraron filas con el número de factura '{nro_factura}'")
+        else:
+            columnas_seleccionadas = filas_factura_con_valor_comun[
+                ['ndrcpcndo', 'cartclo', 'dartclo', 'lote', 'fvlote', 'cfmvmnto',
+                 'gmvmnto', 'des_cli', 'fsrgstro', 'temperatura']]
+            wb = load_workbook('PE_HEA.xlsx')
+            hoja = wb['impresion']
 
+            hoja['E9'] = nro_factura
+            hoja['E10'] = columnas_seleccionadas['gmvmnto'].iloc[0]
+            hoja['C8'] = columnas_seleccionadas['des_cli'].iloc[0]
+            hoja['C6'] = columnas_seleccionadas['fsrgstro'].iloc[0]
 
+            fila = 15
+            for index, row in columnas_seleccionadas.iterrows():
+                hoja[f'B{fila}'] = str(row['cartclo']).zfill(14)
+                hoja[f'C{fila}'] = row['dartclo']
+                hoja[f'M{fila}'] = row['lote']
+                hoja[f'N{fila}'] = row['fvlote']
+                hoja[f'O{fila}'] = row['cfmvmnto']
+                hoja[f'P{fila}'] = row['temperatura']
+                fila += 1
 
+            template_wb = load_workbook('PE_HEA.xlsx')
+            template_hoja = template_wb['impresion']
+            for img in template_hoja._images:
+                hoja.add_image(img)
 
+            nombre_archivo_excel = f'factura_{nro_factura}.xlsx'
+            temp_file = os.path.join(temp_dir, nombre_archivo_excel)
+            wb.save(temp_file)
 
-# Configurar la página Streamlit
-st.title("Cargar archivos de Excel y guardar tablas en una base de datos")
+            generated_files.append(temp_file)
+            limpiar_hoja(hoja)
 
-# Cargar los archivos de Excel mediante la interfaz de Streamlit
-archivo1 = st.file_uploader("Cargar archivo movimientos", type="xls")
-archivo2 = st.file_uploader("Cargar archivo kardex", type="xls")
+    if generated_files:
+        zip_filename = 'facturas.zip'
+        temp_zip_file = os.path.join(temp_dir, zip_filename)
+        with zipfile.ZipFile(temp_zip_file, 'w') as zip_file:
+            for file in generated_files:
+                zip_file.write(file, os.path.basename(file))
 
-# Verificar si los archivos han sido cargados
-if archivo1 and archivo2:
-    # Leer los archivos de Excel en DataFrames
-    df1 = pd.read_excel(archivo1)
-    df2 = pd.read_excel(archivo2)
-
-    # Seleccionar las columnas de interés mediante la interfaz de Streamlit
-    columnas_df1 = st.multiselect("Seleccionar columnas del archivo 1", df1.columns)
-    columnas_df2 = st.multiselect("Seleccionar columnas del archivo 2", df2.columns)
-
-    # Verificar si se han seleccionado columnas en ambos archivos
-    if columnas_df1 and columnas_df2:
-        # Mostrar un botón para guardar las tablas en la base de datos
-        if st.button("Guardar tablas en la base de datos"):
-            guardar_tablas_en_bd(df1, df2, columnas_df1, columnas_df2)
-            st.success("Las tablas se han guardado exitosamente en la base de datos.")
+        return temp_zip_file
     else:
-        st.warning("Debes seleccionar al menos una columna en ambos archivos.")
+        return ''
 
 
 
-st.title("Consulta TABLA")
+# FUNCION PARA MANEJAR LAS OPCIONES DE MENU
+def handle_menu_option(option):
+    if option == "CARGA A LA BASE DE DATOS (SUBIDA DE EXCELS)":
+        st.title("Cargar archivos de Excel y guardar tablas en una base de datos")
+        # Cargar los archivos de Excel mediante la interfaz de Streamlit
+        archivo1 = st.file_uploader("Cargar archivo movimientos", type="xls")
+        archivo2 = st.file_uploader("Cargar archivo kardex", type="xls")
 
-# Ruta de la base de datos
-db_path = os.path.join('maestra.db')
+        # Verificar si los archivos han sido cargados
+        if archivo1 and archivo2:
+            # Leer los archivos de Excel en DataFrames
+            df1 = pd.read_excel(archivo1)
+            df2 = pd.read_excel(archivo2)
 
-# Conexión a la base de datos
-conn = sqlite3.connect(db_path)
-c = conn.cursor()
+            # Seleccionar las columnas de interés mediante la interfaz de Streamlit
+            columnas_df1 = st.multiselect("Seleccionar columnas del archivo 1", df1.columns)
+            columnas_df2 = st.multiselect("Seleccionar columnas del archivo 2", df2.columns)
 
-# Obtener el nombre de todas las tablas en la base de datos
-c.execute("SELECT name FROM sqlite_master WHERE type='table';")
-tablas = c.fetchall()
-tablas = [tabla[0] for tabla in tablas]
+            # Verificar si se han seleccionado columnas en ambos archivos
+            if columnas_df1 and columnas_df2:
+                # Mostrar un botón para guardar las tablas en la base de datos
+                if st.button("Guardar tablas en la base de datos"):
+                    guardar_tablas_en_bd(df1, df2, columnas_df1, columnas_df2)
+                    st.success("Las tablas se han guardado exitosamente en la base de datos.")
+            else:
+                st.warning("Debes seleccionar al menos una columna en ambos archivos.")
 
-# Widget para seleccionar la tabla
-tabla_seleccionada = st.selectbox("Seleccionar tabla", tablas)
+        # Código para la opción 1
+        #st.write("Estás en la Opción 1")
+    elif option == "VISTA TABLAS MOVIMIENTOS Y KARDEX":
+        #st.title("Opción 2")
 
-if tabla_seleccionada:
-    # Consultar todos los datos de la tabla seleccionada
-    consulta = f"SELECT * FROM {tabla_seleccionada}"
-    c.execute(consulta)
-    resultados = c.fetchall()
+        st.title("Consulta TABLA")
 
-    if resultados:
-        # Crear un DataFrame con los resultados de la consulta
-        columnas_df = [descripcion[0] for descripcion in c.description]
-        datos_df = pd.DataFrame(resultados, columns=columnas_df)
+        # Ruta de la base de datos
+        db_path = os.path.join('maestra.db')
 
-        # Mostrar los datos en Streamlit
-        st.write(datos_df)
-    else:
-        st.write("No se encontraron datos en la tabla seleccionada.")
+        # Conexión a la base de datos
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
 
-conn.close()
+        # Obtener el nombre de todas las tablas en la base de datos
+        c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tablas = c.fetchall()
+        tablas = [tabla[0] for tabla in tablas]
+
+        # Widget para seleccionar la tabla
+        tabla_seleccionada = st.selectbox("Seleccionar tabla", tablas)
+
+        if tabla_seleccionada:
+            # Consultar todos los datos de la tabla seleccionada
+            consulta = f"SELECT * FROM {tabla_seleccionada}"
+            c.execute(consulta)
+            resultados = c.fetchall()
+
+            if resultados:
+                # Crear un DataFrame con los resultados de la consulta
+                columnas_df = [descripcion[0] for descripcion in c.description]
+                datos_df = pd.DataFrame(resultados, columns=columnas_df)
+
+                # Mostrar los datos en Streamlit
+                st.write(datos_df)
+            else:
+                st.write("No se encontraron datos en la tabla seleccionada.")
+
+        conn.close()
+
+        # Mostrar un botón para borrar todos los datos de la base de datos
+        if st.button("Borrar todos los datos de la base de datos"):
+            borrar_datos_bd()
+            st.success("Se han borrado todos los datos, columnas y la tabla de la base de datos.")
+
+        # Código para la opción 2
+        #st.write("Estás en la Opción 2")
+    elif option == "OBTENER MAESTRA.CSV -> EXCEL":
+        # st.title("Opción 3")
+        # Código para la opción 3
+        # Configurar la página Streamlit
+        st.title("Consulta de coincidencias")
+
+        # Botón para realizar la consulta
+        if st.button("Consultar las coincidencias"):
+            # Realizar la consulta
+            resultados = realizar_consulta()
+
+            # Mostrar los resultados en una tabla
+            if len(resultados) > 0:
+                st.write("Resultados:")
+                df = pd.DataFrame(resultados,
+                                  columns=["codigo", "calmcn", "cartclo", "dartclo", "fsrgstro", "gmvmnto", "ndrcpcndo",
+                                           "des_cli", "cfmvmnto", "emfrccn", "tmalmcn", "nmalmcn", "generico",
+                                           "comercial", "fvlote", "lote", "des_mov", "temperatura", "carta_canje",
+                                           "carta","presentacion"])
+                st.dataframe(df)
 
 
-# Mostrar un botón para borrar todos los datos de la base de datos
-if st.button("Borrar todos los datos de la base de datos"):
-    borrar_datos_bd()
-    st.success("Se han borrado todos los datos, columnas y la tabla de la base de datos.")
 
 
+            else:
+                st.write("No se encontraron resultados.")
+        #st.write("Estás en la Opción 3")
+
+    elif option == "CREAR GUIA DE FACTURAS":
+
+        st.title('Invoice Search and Export')
+
+        uploaded_master_file = st.file_uploader("Upload Master File", type=["xlsx"])
+        nro_facturas = st.text_area("Enter Invoice Numbers (comma-separated)")
+
+        if st.button('Search and Export'):
+            if uploaded_master_file is not None and nro_facturas:
+                nro_facturas_lista = [f.strip() for f in nro_facturas.split(',')]
+                temp_zip_file = search_invoices(uploaded_master_file, nro_facturas_lista)
+
+                if temp_zip_file:
+                    with open(temp_zip_file, 'rb') as f:
+                        st.download_button(
+                            label="Download ZIP",
+                            data=f,
+                            file_name='facturas.zip',
+                            mime='application/zip'
+                        )
+                else:
+                    st.write("No invoices found or generated.")
+            else:
+                st.write("Please upload a master file and enter invoice numbers.")
 
 
-# Configurar la página Streamlit
-st.title("Consulta de coincidencias")
+# Crear el menú en la barra lateral
+st.sidebar.title("Menú")
+menu_options = ["CARGA A LA BASE DE DATOS (SUBIDA DE EXCELS)", "VISTA TABLAS MOVIMIENTOS Y KARDEX", "OBTENER MAESTRA.CSV -> EXCEL", "CREAR GUIA DE FACTURAS"]
+selected_option = st.sidebar.radio("Selecciona una opción:", menu_options, index=0)
 
-# Botón para realizar la consulta
-if st.button("Consultar las coincidencias"):
-    # Realizar la consulta
-    resultados = realizar_consulta()
-
-    # Mostrar los resultados en una tabla
-    if len(resultados) > 0:
-        st.write("Resultados:")
-        df = pd.DataFrame(resultados, columns=["codigo","calmcn", "cartclo", "dartclo", "fsrgstro", "gmvmnto", "ndrcpcndo", "des_cli", "cfmvmnto", "emfrccn", "tmalmcn", "nmalmcn", "generico", "comercial", "fvlote", "lote", "des_mov","temperatura","carta_canje","carta"])
-        st.dataframe(df)
-
-
-
-
-    else:
-        st.write("No se encontraron resultados.")
-
-
-
+# Llamar a la función correspondiente al menú seleccionado
+handle_menu_option(selected_option)
