@@ -21,6 +21,8 @@ def guardar_tablas_en_bd(df1, df2, columnas_df1, columnas_df2):
             df1[columna] = pd.to_datetime(df1[columna]).dt.strftime('%Y-%m-%d')
         if columna == 'cartclo':
             df1[columna] = df1[columna].astype(str).str.zfill(14).str.replace(" ", "")
+        if columna == 'nro_ruc_cli':
+            df1[columna] = df1[columna].astype(str).str.replace('.0', '').str.replace(',', '')
     df1[columnas_df1].to_sql('movimientos', conn, if_exists='replace', index=False)
 
 
@@ -76,7 +78,7 @@ def realizar_consulta():
     # Ejecutar la consulta
     c.execute('''
      SELECT 'MAPFRE PERU' AS codigo, movimientos.calmcn, movimientos.cartclo, movimientos.dartclo, strftime('%d/%m/%Y', movimientos.fsrgstro), movimientos.gmvmnto, 
-        movimientos.ndrcpcndo, movimientos.des_cli, movimientos.cfmvmnto, movimientos.emfrccn, movimientos.tmalmcn, 
+        movimientos.ndrcpcndo, movimientos.des_cli, movimientos.nro_ruc_cli, movimientos.cfmvmnto, movimientos.emfrccn, movimientos.tmalmcn, 
         movimientos.nmalmcn,movimientos.generico, movimientos.comercial, strftime('%d/%m/%Y',kardex.fvlote), kardex.lote, kardex.des_mov,'15-25° C' AS temperatura, julianday(kardex.fvlote) - julianday(movimientos.fsrgstro) AS  carta_canje, 
         CASE 
             WHEN julianday(kardex.fvlote) - julianday(movimientos.fsrgstro) < 366 THEN 'SI'
@@ -121,6 +123,20 @@ def limpiar_hoja(hoja):
         hoja[f'N{fila}'] = ''
         hoja[f'O{fila}'] = ''
         hoja[f'P{fila}'] = ''
+
+def limpiar_hoja_guia(hoja):
+    hoja['B2'] = ''
+    hoja['B3'] = ''
+    hoja['B4'] = ''
+    hoja['B5'] = ''
+    hoja['B6'] = ''
+    hoja['B7'] = ''
+    hoja['D3'] = ''
+    hoja['D4'] = ''
+    hoja['D5'] = ''
+    hoja['D6'] = ''
+    hoja['D7'] = ''
+
 # FIN DE FILAS HOJAS
 
 # CREAR LAS GUIAS CON LA INFORMACION DE LAS FACTURAS
@@ -178,6 +194,73 @@ def search_invoices(master_file, nro_facturas_lista):
         return temp_zip_file
     else:
         return ''
+
+
+
+
+# CREAR LAS GUIAS CON LA INFORMACION DE LAS FACTURAS
+def buscar_guias(master_file, nro_facturas_lista):
+    temp_dir = 'temp'
+    os.makedirs(temp_dir, exist_ok=True)
+    generated_files = []
+    df_master = pd.read_excel(master_file)
+
+    for nro_factura in nro_facturas_lista:
+
+        filas_factura_con_valor_comun = df_master[df_master['ndrcpcndo'] == nro_factura]
+
+
+        if filas_factura_con_valor_comun.empty:
+            st.write(f"No se encontraron filas con el número de factura '{nro_factura}'")
+        else:
+
+            for index, row in filas_factura_con_valor_comun.iterrows():
+              columnas_seleccionadas = filas_factura_con_valor_comun[
+                    ['ndrcpcndo', 'cartclo', 'lote', 'fvlote', 'cfmvmnto', 'des_cli', 'fsrgstro', 'comercial',
+                     'generico',
+                     'presentacion', 'nro_ruc_cli']]
+
+
+              wb = load_workbook('LIBERACION_ACTA.xlsx')
+              hoja = wb['impresion']
+
+              hoja['B2'] = row['fsrgstro']
+              hoja['B3'] = nro_factura
+              hoja['B4'] = str(row['cartclo']).zfill(14).replace(" ", "")
+              hoja['B5'] = row['lote']
+              hoja['B6'] = row['fvlote']
+              hoja['B7'] = row['presentacion']
+
+              hoja['D3'] = row['comercial']
+              hoja['D4'] = row['generico']
+              hoja['D5'] = row['des_cli']
+              hoja['D6'] = row['nro_ruc_cli']
+              hoja['D7'] = row['cfmvmnto']
+
+              template_wb = load_workbook('LIBERACION_ACTA.xlsx')
+              template_hoja = template_wb['impresion']
+              for img in template_hoja._images:
+                hoja.add_image(img)
+
+              nombre_archivo_excel = f'GUIA_LIBERACION_{nro_factura}_{index}.xlsx'
+              temp_file = os.path.join(temp_dir, nombre_archivo_excel)
+              wb.save(temp_file)
+
+              generated_files.append(temp_file)
+              limpiar_hoja_guia(hoja)
+
+    if generated_files:
+        zip_filename = 'facturas.zip'
+        temp_zip_file = os.path.join(temp_dir, zip_filename)
+        with zipfile.ZipFile(temp_zip_file, 'w') as zip_file:
+            for file in generated_files:
+                zip_file.write(file, os.path.basename(file))
+
+        return temp_zip_file
+    else:
+        return ''
+
+
 
 
 
@@ -271,7 +354,7 @@ def handle_menu_option(option):
                 st.write("Resultados:")
                 df = pd.DataFrame(resultados,
                                   columns=["codigo", "calmcn", "cartclo", "dartclo", "fsrgstro", "gmvmnto", "ndrcpcndo",
-                                           "des_cli", "cfmvmnto", "emfrccn", "tmalmcn", "nmalmcn", "generico",
+                                           "des_cli", "nro_ruc_cli", "cfmvmnto", "emfrccn", "tmalmcn", "nmalmcn", "generico",
                                            "comercial", "fvlote", "lote", "des_mov", "temperatura", "carta_canje",
                                            "carta","presentacion"])
                 st.dataframe(df)
@@ -285,7 +368,7 @@ def handle_menu_option(option):
 
     elif option == "CREAR GUIA DE FACTURAS":
 
-        st.title('Invoice Search and Export')
+        st.title('CREACION DE GUIA DE FACTURAS')
 
         uploaded_master_file = st.file_uploader("Upload Master File", type=["xlsx"])
         nro_facturas = st.text_area("Enter Invoice Numbers (comma-separated)")
@@ -309,9 +392,35 @@ def handle_menu_option(option):
                 st.write("Please upload a master file and enter invoice numbers.")
 
 
+    elif option == "ACTA DE LIBERACION":
+
+        st.title('CREACION DE ACTAS DE LIBERACION')
+
+        uploaded_master_file = st.file_uploader("Upload Master File", type=["xlsx"])
+        nro_facturas = st.text_area("Enter Invoice Numbers (comma-separated)")
+
+        if st.button('BUSCAR Y EXPORTAR'):
+            if uploaded_master_file is not None and nro_facturas:
+                nro_facturas_lista = [f.strip() for f in nro_facturas.split(',')]
+                temp_zip_file = buscar_guias(uploaded_master_file, nro_facturas_lista)
+
+                if temp_zip_file:
+                    with open(temp_zip_file, 'rb') as f:
+                        st.download_button(
+                            label="Download ZIP",
+                            data=f,
+                            file_name='guia_liberacion.zip',
+                            mime='application/zip'
+                        )
+                else:
+                    st.write("No invoices found or generated.")
+            else:
+                st.write("Please upload a master file and enter invoice numbers.")
+
+
 # Crear el menú en la barra lateral
 st.sidebar.title("Menú")
-menu_options = ["CARGA A LA BASE DE DATOS (SUBIDA DE EXCELS)", "VISTA TABLAS MOVIMIENTOS Y KARDEX", "OBTENER MAESTRA.CSV -> EXCEL", "CREAR GUIA DE FACTURAS"]
+menu_options = ["CARGA A LA BASE DE DATOS (SUBIDA DE EXCELS)", "VISTA TABLAS MOVIMIENTOS Y KARDEX", "OBTENER MAESTRA.CSV -> EXCEL", "CREAR GUIA DE FACTURAS","ACTA DE LIBERACION"]
 selected_option = st.sidebar.radio("Selecciona una opción:", menu_options, index=0)
 
 # Llamar a la función correspondiente al menú seleccionado
