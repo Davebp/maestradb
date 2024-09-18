@@ -4,6 +4,9 @@ import sqlite3
 import streamlit as st
 import io
 from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
+from openpyxl.utils import units
+
 import zipfile
 
 # CREAR TABLAS CON LAS COLUMNAS SELECCIONADAS
@@ -172,11 +175,16 @@ def search_invoices(master_file, nro_facturas_lista):
                 hoja[f'P{fila}'] = row['temperatura']
                 fila += 1
 
-            template_wb = load_workbook('PE_HEA.xlsx')
-            template_hoja = template_wb['impresion']
-            for img in template_hoja._images:
-                hoja.add_image(img)
+            # Añadir la imagen de la firma
+            firma_img = Image('firma1.png')  # Imagen de la firma
 
+            # Posicionar en la celda combinada D48:F54
+            firma_img.anchor = 'D48'  # Anclar la imagen en la celda D48 (inicia en la primera celda de la combinación)
+
+            # Añadir la imagen a la hoja
+            hoja.add_image(firma_img)
+
+            # Guardar el archivo Excel
             nombre_archivo_excel = f'factura_{nro_factura}.xlsx'
             temp_file = os.path.join(temp_dir, nombre_archivo_excel)
             wb.save(temp_file)
@@ -194,7 +202,6 @@ def search_invoices(master_file, nro_facturas_lista):
         return temp_zip_file
     else:
         return ''
-
 
 
 
@@ -239,8 +246,15 @@ def buscar_guias(master_file, nro_facturas_lista):
 
               template_wb = load_workbook('LIBERACION_ACTA.xlsx')
               template_hoja = template_wb['impresion']
-              for img in template_hoja._images:
-                hoja.add_image(img)
+
+              # Añadir la imagen de la firma
+              firma_img = Image('firma2.png')  # Imagen de la firma
+
+              # Posicionar en la celda combinada D48:F54
+              firma_img.anchor = 'C40'  # Anclar la imagen en la celda D48 (inicia en la primera celda de la combinación)
+
+              # Añadir la imagen a la hoja
+              hoja.add_image(firma_img)
 
               nombre_archivo_excel = f'GUIA_LIBERACION_{nro_factura}_{index}.xlsx'
               temp_file = os.path.join(temp_dir, nombre_archivo_excel)
