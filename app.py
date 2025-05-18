@@ -177,7 +177,7 @@ def search_invoices(master_file, nro_facturas_lista):
 
             # Añadir la imagen de la firma
             firmas = [
-                ('firma1.png', 'f48'),
+                ('firma1.png', 'F48'),
                 ('image4.png', 'B50'),
                 ('image3.png', 'O48')  # Puedes añadir más si lo deseas
             ]
@@ -253,7 +253,7 @@ def buscar_guias(master_file, nro_facturas_lista):
 
               # Añadir la imagen de la firma
               firmas = [
-                  ('firma1.png', 'f48'),
+                  ('firma1.png', 'F48'),
                   ('image4.png', 'B50'),
                   ('image3.png', 'O48')
                     # Puedes añadir más si lo deseas
