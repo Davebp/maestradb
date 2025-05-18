@@ -176,13 +176,17 @@ def search_invoices(master_file, nro_facturas_lista):
                 fila += 1
 
             # Añadir la imagen de la firma
-            firma_img = Image('firma1.png')  # Imagen de la firma
+            firmas = [
+                ('firma1.png', 'f48'),
+                ('image4.png', 'B50'),
+                ('image3.png', 'O48')  # Puedes añadir más si lo deseas
+            ]
 
-            # Posicionar en la celda combinada D48:F54
-            firma_img.anchor = 'D48'  # Anclar la imagen en la celda D48 (inicia en la primera celda de la combinación)
-
-            # Añadir la imagen a la hoja
-            hoja.add_image(firma_img)
+            # Añadir cada imagen en su posición
+            for ruta_imagen, celda in firmas:
+                firma_img = Image(ruta_imagen)
+                firma_img.anchor = celda
+                hoja.add_image(firma_img)
 
             # Guardar el archivo Excel
             nombre_archivo_excel = f'factura_{nro_factura}.xlsx'
@@ -248,13 +252,18 @@ def buscar_guias(master_file, nro_facturas_lista):
               template_hoja = template_wb['impresion']
 
               # Añadir la imagen de la firma
-              firma_img = Image('firma2.png')  # Imagen de la firma
+              firmas = [
+                  ('firma1.png', 'f48'),
+                  ('image4.png', 'B50'),
+                  ('image3.png', 'O48')
+                    # Puedes añadir más si lo deseas
+              ]
 
-              # Posicionar en la celda combinada D48:F54
-              firma_img.anchor = 'C40'  # Anclar la imagen en la celda D48 (inicia en la primera celda de la combinación)
-
-              # Añadir la imagen a la hoja
-              hoja.add_image(firma_img)
+              # Añadir cada imagen en su posición
+              for ruta_imagen, celda in firmas:
+                  firma_img = Image(ruta_imagen)
+                  firma_img.anchor = celda
+                  template_hoja.add_image(firma_img)
 
               nombre_archivo_excel = f'GUIA_LIBERACION_{nro_factura}_{index}.xlsx'
               temp_file = os.path.join(temp_dir, nombre_archivo_excel)
